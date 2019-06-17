@@ -3,5 +3,21 @@
  *
  * See: https://www.gatsbyjs.org/docs/node-apis/
  */
+const dayjs = require('dayjs')
 
-// You can delete this file if you're not using it
+const dateFormat = 'YYYY-MM-DD'
+const oneWeekAgo = dayjs().subtract(1, 'week').format(dateFormat)
+
+console.log({oneWeekAgo})
+
+exports.onCreatePage = ({page, actions}) => {
+  const { createPage } = actions
+
+  createPage({
+    ...page,
+    context: {
+      mergedPastWeek: `project:kubernetes/9 is:merged merged:>${oneWeekAgo} type:pr`
+    }
+  })
+}
+
