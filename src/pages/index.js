@@ -1,63 +1,93 @@
 import React from "react"
-import { Link, graphql } from "gatsby"
+import { graphql } from "gatsby"
 
 import Layout from "../components/layout"
-import Image from "../components/image"
 import SEO from "../components/seo"
 import dayjs from 'dayjs'
+import { upperFirst } from 'lodash'
 
-const dateFormat = 'YYYY-MM-DD'
-const today = dayjs().format(dateFormat)
-const oneWeekAgo = dayjs().subtract(1, 'week').format(dateFormat)
-console.log({today, oneWeekAgo})
+// takes a timestamp and returns it in nice month/day/year format.
+let prettyDate = (timestamp) => dayjs(timestamp).format('MM-DD-YYYY');
 
+
+// Takes a take a week key, from graphql query, plus the graphql issues
+// makes a component that lists all merged issues from that week.
+const WeekSection = ({weekRange, issues}) => {
+  let weekResults = issues[weekRange]
+  let title = "PR's Merged " + upperFirst(weekRange.split(/(?=[A-Z])/).join(" "))
+  return (
+    <section>
+    <h2>{title}</h2>
+    <p>Total PR's Merged: {weekResults.issueCount}</p>
+        {weekResults.edges.map(({node}) => <IssueItem issue={node} key={node.id} />)}
+    </section>
+  )
+}
+
+
+//given an Issue object, return a <li> item with the issue details
 const IssueItem = ({issue}) => {
   return (
       <li>
+      <p>{prettyDate(issue.mergedAt)}</p>
       <a href={issue.url}target="_blank" rel="noreferrer noopen">#{issue.number}: {issue.title}</a>
       <p>Authored by: <a href={issue.author.url} target="_blank" rel="noreferrer noopen">{issue.author.name}</a></p>
     </li>
   )
 }
 
+// Run through our query and grab each week section, returning a <WeekSection /> component for each
 const IndexPage = ({ data }) => {
   const issues = data.github
-  let oneWeekAgo = issues.oneWeekAgo
+  let weekQueries = Object.keys(data.github)
   return (
       <Layout>
-      <SEO title="Home" />
-      <h1>Hi Stephen!</h1>
-      <p>PR's Merged This Week: {issues.oneWeekAgo.issueCount}</p>
-      <ul>
-      {oneWeekAgo.edges.map(({node}) => {
-        return (
-            <IssueItem issue={node} />
-        )
-      })}
-      </ul>
-      <p>Issues closed last week: {issues.twoWeeksAgo.issueCount}</p>
+        <SEO title="Home" />
+        {weekQueries.map((weekRange) => <WeekSection issues={issues} weekRange={weekRange} />)}
       </Layout>
   )
 }
 
 
-// Figure out how the reviews are collated, we want to have the person who says lgtm,
+// TODO: Figure out how the reviews are collated, we want to have the person who says lgtm,
 // not necessarily the last review comment (as it is often from the original author)
+
+// the date for each search query is dynamic,
+// but graphql wont' accept template string variables for security reasions
+// and so we pass the queries into our site's 'context', then pass it as arguments to the query.
+// see gatsby-node.js for where this happens.
 export const query = graphql`
-query($mergedPastWeek: String!) {
+query($mergedPastWeek: String!, $mergedTwoWeeksAgo: String!, $mergedThreeWeeksAgo: String!, $mergedFourWeeksAgo: String!, $mergedFiveWeeksAgo: String!) {
   github {
-    oneWeekAgo: search(query:$mergedPastWeek, type: ISSUE, first: 100) {
+    pastOneWeek: search(query:$mergedPastWeek, type: ISSUE, first: 100) {
       issueCount
-      edges {
-        node {
-          ... on GitHub_PullRequest {
-            ...PullRequestDetails
-          }
-        }
+      ...PRSearchResults
       }
-    }
-    twoWeeksAgo: search(query: "project:kubernetes/9 is:closed closed:<2019-06-10 type:pr", type: ISSUE, first: 100) {
+    pastTwoWeeks: search(query: $mergedTwoWeeksAgo, type: ISSUE, first: 100) {
       issueCount
+      ...PRSearchResults
+    }
+    pastThreeWeeks: search(query: $mergedThreeWeeksAgo, type: ISSUE, first: 100) {
+      issueCount
+      ...PRSearchResults
+    }
+    pastFourWeeks: search(query: $mergedFourWeeksAgo, type: ISSUE, first: 100) {
+      issueCount
+      ...PRSearchResults
+    }
+    pastFiveWeeks: search(query: $mergedFiveWeeksAgo, type: ISSUE, first: 100) {
+      issueCount
+      ...PRSearchResults
+    }
+  }
+}
+
+fragment PRSearchResults on GitHub_SearchResultItemConnection {
+  edges {
+    node {
+      ... on GitHub_PullRequest {
+        ...PullRequestDetails
+      }
     }
   }
 }
@@ -65,9 +95,11 @@ query($mergedPastWeek: String!) {
 fragment PullRequestDetails on GitHub_PullRequest {
   state
   title
+  id
   url
   number
   closedAt
+  mergedAt
   author {
     ...AuthorDetails
   }
